@@ -1,0 +1,5 @@
+{
+  "name": "Temple Runner 3D",
+  "description": "An endless 3D runner inspired by Temple Run, featuring smooth lane switching, procedural obstacles, and AI-generated ancient lore.",
+  "requestFramePermissions": []
+}
