@@ -1,30 +1,21 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import { BoardState, Color } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
-export const generateLore = async (score: number): Promise<string> => {
+export const getTacticalWhisper = async (color: Color, board: BoardState): Promise<string> => {
   try {
+    const prompt = `You are a cryptic battlefield advisor in a Fog of War chess match. 
+    The current player is ${color === 'w' ? 'White' : 'Black'}.
+    The board is partially hidden. Give a short, mysterious 1-sentence tactical tip or omen. Max 15 words.`;
+    
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Generate a single short sentence of ancient temple lore for a runner who has reached a score of ${score}. Make it mysterious and atmospheric.`,
+      contents: prompt,
     });
-    return response.text || "The walls whisper of those who came before...";
+    return response.text || "Move with the silence of the void.";
   } catch (error) {
-    console.error("Gemini Error:", error);
-    return "Ancient spirits watch your every step.";
-  }
-};
-
-export const generateDeathReason = async (score: number): Promise<string> => {
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Generate a poetic and short reason why an adventurer died in a mysterious jungle temple after reaching a score of ${score}. Use dramatic language.`,
-    });
-    return response.text || "The jungle claimed another soul.";
-  } catch (error) {
-    console.error("Gemini Error:", error);
-    return "Your journey was cut short by the temple's wrath.";
+    return "Shadows lengthen across the board.";
   }
 };

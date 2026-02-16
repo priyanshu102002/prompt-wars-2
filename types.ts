@@ -1,22 +1,43 @@
 
 export enum GameStatus {
-  START = 'START',
+  LOBBY = 'LOBBY',
+  MATCHMAKING = 'MATCHMAKING',
   PLAYING = 'PLAYING',
   GAMEOVER = 'GAMEOVER',
 }
 
-export interface GameState {
-  status: GameStatus;
-  score: number;
-  highScore: number;
-  speed: number;
-  distance: number;
-  deathReason?: string;
+export type PieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
+export type Color = 'w' | 'b';
+
+export interface Piece {
+  type: PieceType;
+  color: Color;
 }
 
-export interface ObstacleData {
+export type BoardState = (Piece | null)[][];
+
+export interface UserProfile {
+  uid: string;
+  displayName: string;
+  photoURL?: string;
+  rating: number;
+  matchesPlayed: number;
+}
+
+export interface ChessMatch {
   id: string;
-  type: 'hurdle' | 'wall' | 'bridge';
-  lane: number; // -1, 0, 1
-  z: number;
+  white: UserProfile;
+  black: UserProfile;
+  board: BoardState;
+  turn: Color;
+  history: string[];
+  status: 'active' | 'finished';
+  winner?: Color | 'draw';
+}
+
+export interface GameState {
+  status: GameStatus;
+  userColor?: Color;
+  score: number;
+  highScore: number;
 }

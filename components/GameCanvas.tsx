@@ -1,38 +1,37 @@
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { GameStatus, ObstacleData } from '../types';
+import { GameStatus } from '../types';
 
 interface GameCanvasProps {
   status: GameStatus;
   onGameOver: () => void;
-  onScoreUpdate: (score: number) => void;
+  onScoreUpdate: (score: number, coins: number) => void;
+  event?: 'quake' | 'storm' | 'eclipse';
 }
 
 const LANE_WIDTH = 4;
-const INITIAL_SPEED = 0.5;
-const SPEED_INCREMENT = 0.0001;
-const PLAYER_Z = 0;
-const JUMP_FORCE = 0.2;
-const GRAVITY = 0.008;
+const INITIAL_SPEED = 0.7;
+const SPEED_MAX = 3.0;
+const SPEED_INCREMENT = 0.0002;
+const PLAYER_Z = 5;
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ status, onGameOver, onScoreUpdate }) => {
+const GameCanvas: React.FC<GameCanvasProps> = ({ status, onGameOver, onScoreUpdate, event }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<number>();
   const gameRef = useRef({
     speed: INITIAL_SPEED,
     distance: 0,
-    lane: 0, // -1, 0, 1
+    coins: 0,
     targetLane: 0,
     playerY: 0,
     playerVY: 0,
     obstacles: [] as THREE.Group[],
-    groundTiles: [] as THREE.Mesh[],
+    coins_objects: [] as THREE.Mesh[],
+    groundTiles: [] as THREE.Group[],
+    shake: 0,
   });
 
-  const [currentScore, setCurrentScore] = useState(0);
-
-  // Initialize Scene
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -40,165 +39,121 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ status, onGameOver, onScoreUpda
     const height = mountRef.current.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a0a0a);
-    scene.fog = new THREE.Fog(0x0a0a0a, 20, 100);
+    scene.background = new THREE.Color(0x020202);
+    scene.fog = new THREE.FogExp2(0x020202, 0.012);
 
     const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    camera.position.set(0, 5, 10);
+    camera.position.set(0, 5, 12);
     camera.lookAt(0, 2, -10);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     mountRef.current.appendChild(renderer.domElement);
 
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    // Dynamic Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffccaa, 1);
-    sunLight.position.set(5, 10, 5);
-    scene.add(sunLight);
+    const sun = new THREE.DirectionalLight(0xff7700, 1);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
 
-    // Player
+    // Player (Cyber-Adventurer)
     const playerGroup = new THREE.Group();
-    const bodyGeo = new THREE.BoxGeometry(1, 1.8, 0.6);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xcd7f32 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.9;
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x005555 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.4, 0.5), bodyMat);
+    body.position.y = 0.7;
     playerGroup.add(body);
-    
-    // Simple Head
-    const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const head = new THREE.Mesh(headGeo, bodyMat);
-    head.position.y = 2.1;
-    playerGroup.add(head);
-
+    playerGroup.position.z = PLAYER_Z;
     scene.add(playerGroup);
 
-    // Ground Setup
+    // Ground Construction
     const groundGeo = new THREE.PlaneGeometry(LANE_WIDTH * 3, 50);
-    const groundMat = new THREE.MeshStandardMaterial({ 
-      color: 0x1a1a1a, 
-      roughness: 0.8,
-      metalness: 0.2
-    });
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1 });
+    
+    const createTile = (z: number) => {
+      const g = new THREE.Group();
+      const m = new THREE.Mesh(groundGeo, groundMat);
+      m.rotation.x = -Math.PI / 2;
+      g.add(m);
+      
+      // Neon Rails
+      [-1.5, -0.5, 0.5, 1.5].forEach(i => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 50), new THREE.MeshBasicMaterial({ color: 0x333333 }));
+        rail.position.set(i * LANE_WIDTH, 0.05, 0);
+        g.add(rail);
+      });
 
-    const createGroundTile = (z: number) => {
-      const tile = new THREE.Mesh(groundGeo, groundMat);
-      tile.rotation.x = -Math.PI / 2;
-      tile.position.z = z;
-      scene.add(tile);
-      
-      // Decorative Pillars
-      const pillarGeo = new THREE.BoxGeometry(0.8, 10, 0.8);
-      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-      
-      const p1 = new THREE.Mesh(pillarGeo, pillarMat);
-      p1.position.set(-LANE_WIDTH * 2, 5, 0);
-      tile.add(p1);
-      
-      const p2 = new THREE.Mesh(pillarGeo, pillarMat);
-      p2.position.set(LANE_WIDTH * 2, 5, 0);
-      tile.add(p2);
-
-      return tile;
+      g.position.z = z;
+      scene.add(g);
+      return g;
     };
 
-    const tiles = [
-      createGroundTile(0),
-      createGroundTile(-50),
-      createGroundTile(-100)
-    ];
+    const tiles = [createTile(0), createTile(-50), createTile(-100)];
     gameRef.current.groundTiles = tiles;
 
-    // Obstacle Management
-    const obstacleGeo = new THREE.BoxGeometry(3, 1.5, 1);
-    const obstacleMat = new THREE.MeshStandardMaterial({ color: 0x8b0000 });
-
+    // Obstacle logic
     const spawnObstacle = (z: number) => {
-      const group = new THREE.Group();
-      const obs = new THREE.Mesh(obstacleGeo, obstacleMat);
       const lane = Math.floor(Math.random() * 3) - 1;
-      group.position.set(lane * LANE_WIDTH, 0.75, z);
-      group.userData = { lane };
-      group.add(obs);
-      scene.add(group);
-      gameRef.current.obstacles.push(group);
+      const obs = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 0.5), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+      obs.position.set(lane * LANE_WIDTH, 0.5, z);
+      scene.add(obs);
+      gameRef.current.obstacles.push(obs as unknown as THREE.Group);
     };
 
     // Controls
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKey = (e: KeyboardEvent) => {
       if (status !== GameStatus.PLAYING) return;
-      if (e.key === 'ArrowLeft' || e.key === 'a') {
-        gameRef.current.targetLane = Math.max(-1, gameRef.current.targetLane - 1);
-      } else if (e.key === 'ArrowRight' || e.key === 'd') {
-        gameRef.current.targetLane = Math.min(1, gameRef.current.targetLane + 1);
-      } else if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && gameRef.current.playerY === 0) {
-        gameRef.current.playerVY = JUMP_FORCE;
-      }
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') gameRef.current.targetLane = Math.max(-1, gameRef.current.targetLane - 1);
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') gameRef.current.targetLane = Math.min(1, gameRef.current.targetLane + 1);
+      if ((e.code === 'Space' || e.code === 'ArrowUp') && gameRef.current.playerY === 0) gameRef.current.playerVY = 0.22;
     };
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKey);
 
-    // Animation Loop
     let lastTime = performance.now();
     const animate = (time: number) => {
-      const delta = (time - lastTime) / 16.67; // Normalize to ~60fps
+      const delta = Math.min((time - lastTime) / 16.67, 3);
       lastTime = time;
 
       if (status === GameStatus.PLAYING) {
-        // Speed & Distance
-        gameRef.current.speed += SPEED_INCREMENT * delta;
-        gameRef.current.distance += gameRef.current.speed * delta;
-        const score = Math.floor(gameRef.current.distance);
-        setCurrentScore(score);
-        onScoreUpdate(score);
+        const g = gameRef.current;
+        g.speed = Math.min(SPEED_MAX, g.speed + SPEED_INCREMENT * delta);
+        g.distance += g.speed * delta;
+        onScoreUpdate(Math.floor(g.distance), g.coins);
 
-        // Lane Movement
-        const laneDiff = gameRef.current.targetLane * LANE_WIDTH - playerGroup.position.x;
-        playerGroup.position.x += laneDiff * 0.2 * delta;
-
-        // Jump Physics
-        if (gameRef.current.playerVY !== 0 || gameRef.current.playerY > 0) {
-          gameRef.current.playerY += gameRef.current.playerVY * delta;
-          gameRef.current.playerVY -= GRAVITY * delta;
-          if (gameRef.current.playerY <= 0) {
-            gameRef.current.playerY = 0;
-            gameRef.current.playerVY = 0;
-          }
+        // Quake Event Effect
+        if (event === 'quake') {
+          g.shake = Math.sin(time * 0.05) * 0.1;
+          camera.position.x = g.shake;
+          camera.position.y = 5 + g.shake;
+        } else {
+          camera.position.x *= 0.9;
         }
-        playerGroup.position.y = gameRef.current.playerY;
 
-        // Environment Recycling
-        tiles.forEach(tile => {
-          tile.position.z += gameRef.current.speed * delta;
-          if (tile.position.z > 50) {
-            tile.position.z -= 150;
-          }
+        // Movements
+        playerGroup.position.x += (g.targetLane * LANE_WIDTH - playerGroup.position.x) * 0.2 * delta;
+        if (g.playerY > 0 || g.playerVY !== 0) {
+          g.playerY += g.playerVY * delta;
+          g.playerVY -= 0.01 * delta;
+          if (g.playerY <= 0) { g.playerY = 0; g.playerVY = 0; }
+        }
+        playerGroup.position.y = g.playerY;
+
+        // Scenery Recycling
+        tiles.forEach(t => {
+          t.position.z += g.speed * delta;
+          if (t.position.z > 50) t.position.z -= 150;
         });
 
-        // Obstacle Spawning & Movement
-        if (Math.random() < 0.02 * delta && gameRef.current.obstacles.length < 5) {
-          spawnObstacle(-100);
-        }
-
-        gameRef.current.obstacles.forEach((obs, index) => {
-          obs.position.z += gameRef.current.speed * delta;
-          
-          // Collision Check
-          const playerX = playerGroup.position.x;
-          const obsX = obs.position.x;
-          const distZ = Math.abs(obs.position.z - PLAYER_Z);
-          const distX = Math.abs(obsX - playerX);
-
-          if (distZ < 1.0 && distX < 1.5 && gameRef.current.playerY < 1.2) {
-            onGameOver();
-          }
-
-          if (obs.position.z > 10) {
-            scene.remove(obs);
-            gameRef.current.obstacles.splice(index, 1);
-          }
+        // Obstacles
+        if (Math.random() < 0.02 * delta) spawnObstacle(-100);
+        g.obstacles.forEach((o, i) => {
+          o.position.z += g.speed * delta;
+          const dz = Math.abs(o.position.z - PLAYER_Z);
+          const dx = Math.abs(o.position.x - playerGroup.position.x);
+          if (dz < 0.8 && dx < 1.5 && g.playerY < 1) onGameOver();
+          if (o.position.z > 20) { scene.remove(o); g.obstacles.splice(i, 1); }
         });
       }
 
@@ -208,27 +163,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ status, onGameOver, onScoreUpda
 
     requestRef.current = requestAnimationFrame(animate);
 
-    const handleResize = () => {
-      const w = mountRef.current?.clientWidth || 0;
-      const h = mountRef.current?.clientHeight || 0;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    };
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKey);
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      if (mountRef.current) {
-        mountRef.current.removeChild(renderer.domElement);
-      }
+      if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
       renderer.dispose();
     };
-  }, [status, onGameOver, onScoreUpdate]);
+  }, [status, event, onGameOver, onScoreUpdate]);
 
-  return <div ref={mountRef} className="w-full h-full cursor-none" />;
+  return <div ref={mountRef} className="w-full h-full touch-none" />;
 };
 
 export default GameCanvas;

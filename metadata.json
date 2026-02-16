@@ -1,5 +1,5 @@
 {
-  "name": "Temple Runner 3D",
-  "description": "An endless 3D runner inspired by Temple Run, featuring smooth lane switching, procedural obstacles, and AI-generated ancient lore.",
+  "name": "Fog of War Chess - Blind Tactical Strategy",
+  "description": "A real-time multiplayer chess game where players can only see the squares they can move to. Includes AI tactical whispers and global leaderboards.",
   "requestFramePermissions": []
 }
